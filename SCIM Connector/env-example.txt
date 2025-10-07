@@ -1,0 +1,95 @@
+# ===========================================
+# OKTA SCIM SQL CONNECTOR CONFIGURATION
+# ===========================================
+
+# Database Connection Settings
+# ===========================================
+DB_DRIVER=SQL Server
+DB_SERVER=your-sql-server.company.com
+DB_NAME=UserDatabase
+DB_USERNAME=sql_readonly_user
+DB_PASSWORD=YourSecurePassword123!
+
+# SQL Table Configuration
+# ===========================================
+SQL_TABLE=users
+
+# Column Mappings - Map your database columns to SCIM attributes
+# ===========================================
+
+# REQUIRED: User ID (must be unique)
+DB_COLUMN_ID=id
+
+# REQUIRED: Username (typically email or login name)
+DB_COLUMN_USERNAME=email
+
+# REQUIRED: Email address
+DB_COLUMN_EMAIL=email
+
+# OPTIONAL: Name fields
+DB_COLUMN_FIRST_NAME=first_name
+DB_COLUMN_LAST_NAME=last_name
+DB_COLUMN_DISPLAY_NAME=display_name
+
+# OPTIONAL: User status (1/0 or True/False)
+DB_COLUMN_ACTIVE=is_active
+
+# OPTIONAL: External ID (employee ID, etc.)
+DB_COLUMN_EXTERNAL_ID=employee_id
+
+# SCIM Authentication
+# ===========================================
+# These credentials will be used by Okta OPP Agent
+SCIM_USERNAME=okta_import
+SCIM_PASSWORD=SecureImportPassword123!
+
+# Server Configuration
+# ===========================================
+SERVER_HOST=0.0.0.0
+SERVER_PORT=443
+
+# ===========================================
+# EXAMPLE CONFIGURATIONS FOR DIFFERENT SCHEMAS
+# ===========================================
+
+# Example 1: HR System with employee data
+# -----------------------------------------
+# DB_COLUMN_ID=employee_number
+# DB_COLUMN_USERNAME=work_email
+# DB_COLUMN_EMAIL=work_email
+# DB_COLUMN_FIRST_NAME=fname
+# DB_COLUMN_LAST_NAME=lname
+# DB_COLUMN_DISPLAY_NAME=full_name
+# DB_COLUMN_ACTIVE=employment_status
+# DB_COLUMN_EXTERNAL_ID=employee_number
+
+# Example 2: Active Directory Export
+# -----------------------------------------
+# DB_COLUMN_ID=objectGUID
+# DB_COLUMN_USERNAME=userPrincipalName
+# DB_COLUMN_EMAIL=mail
+# DB_COLUMN_FIRST_NAME=givenName
+# DB_COLUMN_LAST_NAME=sn
+# DB_COLUMN_DISPLAY_NAME=displayName
+# DB_COLUMN_ACTIVE=userAccountControl
+# DB_COLUMN_EXTERNAL_ID=employeeID
+
+# Example 3: Simple user table
+# -----------------------------------------
+# DB_COLUMN_ID=user_id
+# DB_COLUMN_USERNAME=username
+# DB_COLUMN_EMAIL=email_address
+# DB_COLUMN_FIRST_NAME=firstname
+# DB_COLUMN_LAST_NAME=lastname
+# DB_COLUMN_ACTIVE=enabled
+
+# Example 4: Payroll system
+# -----------------------------------------
+# DB_COLUMN_ID=payroll_id
+# DB_COLUMN_USERNAME=email
+# DB_COLUMN_EMAIL=email
+# DB_COLUMN_FIRST_NAME=legal_first_name
+# DB_COLUMN_LAST_NAME=legal_last_name
+# DB_COLUMN_DISPLAY_NAME=preferred_name
+# DB_COLUMN_ACTIVE=active_employee
+# DB_COLUMN_EXTERNAL_ID=ssn_last_four
