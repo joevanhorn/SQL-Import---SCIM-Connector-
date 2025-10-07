@@ -153,15 +153,6 @@ SERVER_HOST=0.0.0.0
 SERVER_PORT=443
 ```
 
-## Database Schema Examples
-
-The connector supports various database schemas. See `docs/examples/` for:
-
-- HR System schema
-- Active Directory export schema
-- Payroll system schema
-- Custom database schema
-
 ## API Endpoints
 
 | Endpoint | Method | Description |
@@ -182,7 +173,7 @@ The connector supports various database schemas. See `docs/examples/` for:
 Error: 'urn:scim:schemas:core:1.0' must be declared
 ```
 
-**Solution**: The connector now uses SCIM 1.1 format (no schemas arrays in responses). Make sure you're using the latest version.
+**Solution**: Check what version of SCIM your OPP agent and Okta console support. Consider enabling SCIM 2.0 or using the SCIM 1.1 version
 
 **2. Port 443 Requires Administrator**
 
@@ -247,7 +238,7 @@ curl http://localhost:443/health
 
 ### Windows Service
 
-See `docs/deployment/windows-service.md` for instructions on running as a Windows Service.
+See `docs/deployment/windows-service-deployment.md` for instructions on running as a Windows Service.
 
 ### Security Considerations
 
@@ -257,6 +248,7 @@ See `docs/deployment/windows-service.md` for instructions on running as a Window
 4. Use SQL Server accounts with read-only access
 5. Enable SQL Server encryption
 6. Regularly rotate credentials
+7. Store credentials in a secure vault and access programmatically
 
 ### Performance Tuning
 
@@ -264,29 +256,6 @@ See `docs/deployment/windows-service.md` for instructions on running as a Window
 - Optimize SQL query with proper indexes
 - Consider database connection pooling
 - Monitor memory usage for large user sets
-
-## Project Structure
-
-```
-okta-scim-sql-connector/
-├── inbound_app.py              # Main SCIM server
-├── requirements.txt            # Python dependencies
-├── .env.example               # Example configuration
-├── README.md                  # This file
-├── LICENSE                    # License file
-├── docs/
-│   ├── deployment/
-│   │   ├── windows-service.md
-│   │   └── ssl-setup.md
-│   ├── examples/
-│   │   ├── hr-system-schema.md
-│   │   ├── ad-export-schema.md
-│   │   └── custom-schema.md
-│   └── troubleshooting.md
-└── tests/
-    ├── test_db_connection.py
-    └── test_scim_endpoints.py
-```
 
 ## Contributing
 
@@ -304,10 +273,6 @@ For issues or questions:
 - Contact your Okta Solutions Engineering team
 - Check Okta documentation: https://help.okta.com
 
-## License
-
-MIT License - See LICENSE file for details
-
 ## Acknowledgments
 
 Built for Okta Solutions Engineers to demonstrate SQL database import capabilities.
@@ -316,4 +281,4 @@ Built for Okta Solutions Engineers to demonstrate SQL database import capabiliti
 
 **Version:** 1.0.0  
 **Last Updated:** October 2025  
-**Maintainer:** Okta Solutions Engineering
+**Maintainer:** Joe Van Horn, Okta Office of the Field CTO
