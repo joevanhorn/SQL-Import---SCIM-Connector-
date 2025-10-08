@@ -1,442 +1,387 @@
-# Windows Service Deployment Guide
+# Windows Service Management Guide
 
-This guide explains how to deploy the SCIM connector as a Windows Service for production use.
+Complete guide for installing, configuring, and managing the Okta SCIM Connector as a Windows Service.
 
-## Option 1: NSSM (Non-Sucking Service Manager) - Recommended
+## Table of Contents
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Service Management](#service-management)
+- [Monitoring](#monitoring)
+- [Troubleshooting](#troubleshooting)
+- [Uninstallation](#uninstallation)
 
-NSSM is the easiest way to run Python applications as Windows Services.
+---
 
-### Installation Steps
+## Prerequisites
 
-#### 1. Download NSSM
+### Required
+- Windows Server 2016+ or Windows 10+
+- Python 3.7 or higher
+- Administrator privileges
+- SQL Server connectivity
+- `.env` file configured (copy from `.env.example`)
 
+### Optional
+- Okta OPP Agent installed (for production use)
+
+---
+
+## Installation
+
+### Option 1: Automated Installation (Recommended)
+
+**SCIM 1.1 (Standard - Works with all Okta tenants)**
 ```powershell
-# Download from https://nssm.cc/download
-# Or use Chocolatey
-choco install nssm
+# Run PowerShell as Administrator
+.\install_service.ps1 -AutoStart
 ```
 
-#### 2. Create Service
-
+**SCIM 2.0 (Requires Okta Feature Flag)**
 ```powershell
-# Run as Administrator
-# Navigate to NSSM directory
-cd C:\nssm-2.24\win64
-
-# Install service
-.\nssm.exe install OktaSCIMConnector "C:\okta-scim-sql-connector\venv\Scripts\python.exe" "C:\okta-scim-sql-connector\inbound_app.py"
-
-# Set working directory
-.\nssm.exe set OktaSCIMConnector AppDirectory "C:\okta-scim-sql-connector"
-
-# Set startup type to automatic
-.\nssm.exe set OktaSCIMConnector Start SERVICE_AUTO_START
-
-# Set restart behavior
-.\nssm.exe set OktaSCIMConnector AppExit Default Restart
-.\nssm.exe set OktaSCIMConnector AppRestartDelay 5000
-
-# Configure stdout/stderr logging
-.\nssm.exe set OktaSCIMConnector AppStdout "C:\okta-scim-sql-connector\logs\service-output.log"
-.\nssm.exe set OktaSCIMConnector AppStderr "C:\okta-scim-sql-connector\logs\service-error.log"
-
-# Set service to run as specific user (if needed)
-.\nssm.exe set OktaSCIMConnector ObjectName "DOMAIN\ServiceAccount" "ServicePassword"
+# Run PowerShell as Administrator
+.\install_service.ps1 -ScimVersion "2.0" -AutoStart
 ```
 
-#### 3. Start Service
+### Option 2: Manual Installation
 
 ```powershell
-# Start the service
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Set SCIM version (optional, defaults to 1.1)
+$env:SCIM_VERSION = "1.1"  # or "2.0"
+
+# 3. Install service
+python service_wrapper.py install
+
+# 4. Start service
 Start-Service OktaSCIMConnector
+```
 
-# Check service status
+---
+
+## Service Management
+
+### Start the Service
+```powershell
+Start-Service OktaSCIMConnector
+```
+
+### Stop the Service
+```powershell
+Stop-Service OktaSCIMConnector
+```
+
+### Restart the Service
+```powershell
+Restart-Service OktaSCIMConnector
+```
+
+### Check Service Status
+```powershell
 Get-Service OktaSCIMConnector
 
-# View logs
-Get-Content C:\okta-scim-sql-connector\logs\service-output.log -Tail 50
+# Detailed status
+Get-Service OktaSCIMConnector | Format-List *
 ```
 
-#### 4. Configure Firewall
-
+### Configure Startup Type
 ```powershell
-# Allow inbound connections on port 443
-New-NetFirewallRule -DisplayName "Okta SCIM Connector" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
+# Automatic (starts on boot)
+Set-Service OktaSCIMConnector -StartupType Automatic
+
+# Manual (must be started manually)
+Set-Service OktaSCIMConnector -StartupType Manual
+
+# Disabled
+Set-Service OktaSCIMConnector -StartupType Disabled
 ```
 
-### Service Management
+---
+
+## Monitoring
+
+### View Service Logs
+```powershell
+# View last 50 lines
+Get-Content logs\service.log -Tail 50
+
+# View last 50 lines and follow new entries
+Get-Content logs\service.log -Tail 50 -Wait
+
+# View all logs
+Get-Content logs\service.log
+```
+
+### Check Service Health
+```powershell
+# Test SCIM endpoint
+Invoke-WebRequest -Uri "http://localhost:8080/scim/v1/Users" -Headers @{Authorization="Basic <your-base64-token>"}
+
+# Or use the monitoring script
+.\scripts\monitor_health.ps1
+```
+
+### Windows Event Viewer
+1. Open Event Viewer (`eventvwr.msc`)
+2. Navigate to: **Windows Logs → Application**
+3. Filter by Source: **OktaSCIMConnector**
+
+---
+
+## Switching SCIM Versions
+
+To switch between SCIM 1.1 and 2.0:
 
 ```powershell
-# Start service
-Start-Service OktaSCIMConnector
-
-# Stop service
+# 1. Stop the service
 Stop-Service OktaSCIMConnector
+
+# 2. Uninstall
+.\install_service.ps1 -Uninstall
+
+# 3. Reinstall with new version
+.\install_service.ps1 -ScimVersion "2.0" -AutoStart
+```
+
+Or manually:
+```powershell
+# Set environment variable (system-wide)
+[System.Environment]::SetEnvironmentVariable("SCIM_VERSION", "2.0", "Machine")
 
 # Restart service
 Restart-Service OktaSCIMConnector
-
-# Remove service (if needed)
-.\nssm.exe remove OktaSCIMConnector confirm
 ```
 
 ---
 
-## Option 2: Python Service (win32serviceutil)
+## Troubleshooting
 
-For environments where you can't use NSSM, use native Windows Service.
+### Service Won't Start
 
-### Installation Steps
-
-#### 1. Install Dependencies
-
+**Check Python Installation**
 ```powershell
-pip install pywin32
+python --version
+# Should show Python 3.7+
 ```
 
-#### 2. Create Service Wrapper
-
-Create `service_wrapper.py`:
-
-```python
-import win32serviceutil
-import win32service
-import win32event
-import servicemanager
-import sys
-import os
-from pathlib import Path
-
-# Add project directory to path
-sys.path.insert(0, str(Path(__file__).parent))
-
-class OktaSCIMService(win32serviceutil.ServiceFramework):
-    _svc_name_ = "OktaSCIMConnector"
-    _svc_display_name_ = "Okta SCIM SQL Connector"
-    _svc_description_ = "SCIM 1.1 server for importing SQL users into Okta"
-    
-    def __init__(self, args):
-        win32serviceutil.ServiceFramework.__init__(self, args)
-        self.stop_event = win32event.CreateEvent(None, 0, 0, None)
-        self.running = True
-        
-    def SvcStop(self):
-        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
-        win32event.SetEvent(self.stop_event)
-        self.running = False
-        
-    def SvcDoRun(self):
-        servicemanager.LogMsg(
-            servicemanager.EVENTLOG_INFORMATION_TYPE,
-            servicemanager.PYS_SERVICE_STARTED,
-            (self._svc_name_, '')
-        )
-        self.main()
-        
-    def main(self):
-        # Import and run Flask app
-        from inbound_app import app, SERVER_HOST, SERVER_PORT
-        
-        try:
-            app.run(
-                host=SERVER_HOST,
-                port=SERVER_PORT,
-                debug=False,
-                use_reloader=False
-            )
-        except Exception as e:
-            servicemanager.LogErrorMsg(f"Service error: {str(e)}")
-
-if __name__ == '__main__':
-    if len(sys.argv) == 1:
-        servicemanager.Initialize()
-        servicemanager.PrepareToHostSingle(OktaSCIMService)
-        servicemanager.StartServiceCtrlDispatcher()
-    else:
-        win32serviceutil.HandleCommandLine(OktaSCIMService)
+**Check Dependencies**
+```powershell
+pip list | Select-String "pywin32|Flask|pyodbc"
 ```
 
-#### 3. Install Service
-
+**Check Configuration**
 ```powershell
-# Install service
-python service_wrapper.py install
+# Verify .env file exists
+Test-Path .env
 
-# Set to auto-start
-python service_wrapper.py --startup auto install
-
-# Start service
-python service_wrapper.py start
+# View .env contents (careful - contains passwords!)
+Get-Content .env
 ```
 
-#### 4. Manage Service
+**Check Logs**
+```powershell
+Get-Content logs\service.log -Tail 100
+```
+
+### Service Starts but Crashes
+
+**Check Database Connection**
+```powershell
+python test_db_connection.py
+```
+
+**Check Port Availability**
+```powershell
+# Check if port 8080 or 443 is in use
+Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue
+Get-NetTCPConnection -LocalPort 443 -ErrorAction SilentlyContinue
+```
+
+**Verify SCIM Script Exists**
+```powershell
+# For SCIM 1.1
+Test-Path inbound_app.py
+
+# For SCIM 2.0
+Test-Path scim2_app.py
+```
+
+### Permission Errors
+
+**Firewall Issues**
+```powershell
+# Add firewall rule for port 8080
+New-NetFirewallRule -DisplayName "Okta SCIM Connector" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
+
+# For port 443 (HTTPS)
+New-NetFirewallRule -DisplayName "Okta SCIM Connector HTTPS" -Direction Inbound -LocalPort 443 -Protocol TCP -Action Allow
+```
+
+**Service Account Permissions**
+The service runs under the Local System account by default. To use a different account:
 
 ```powershell
-# Check status
-python service_wrapper.py status
+$cred = Get-Credential
+Set-Service OktaSCIMConnector -Credential $cred
+```
 
-# Stop service
-python service_wrapper.py stop
+### Common Errors
 
-# Remove service
+| Error | Solution |
+|-------|----------|
+| `pywin32 not found` | Install: `pip install pywin32` |
+| `.env file not found` | Copy `.env.example` to `.env` and configure |
+| `SQL Server connection failed` | Check connection string in `.env` |
+| `Port already in use` | Change `PORT` in `.env` or stop conflicting service |
+| `Service fails to start` | Check `logs\service.log` for details |
+
+---
+
+## Uninstallation
+
+### Using Install Script (Recommended)
+```powershell
+.\install_service.ps1 -Uninstall
+```
+
+### Manual Uninstallation
+```powershell
+# 1. Stop service
+Stop-Service OktaSCIMConnector
+
+# 2. Remove service
 python service_wrapper.py remove
+
+# 3. Clean up environment variable (optional)
+[System.Environment]::SetEnvironmentVariable("SCIM_VERSION", $null, "Machine")
+```
+
+### Complete Cleanup
+```powershell
+# Remove service
+.\install_service.ps1 -Uninstall
+
+# Remove logs (optional)
+Remove-Item logs\*.log
+
+# Remove virtual environment (optional)
+Remove-Item venv -Recurse -Force
 ```
 
 ---
 
-## Option 3: Task Scheduler
+## Advanced Configuration
 
-Simplest option for testing or non-critical deployments.
+### Running on Port 443 (HTTPS)
 
-### Setup Steps
+⚠️ **Important**: Port 443 requires Administrator privileges
 
-#### 1. Create Batch Script
+1. Update `.env`:
+   ```
+   PORT=443
+   ```
 
-Create `start_scim_server.bat`:
+2. Restart service:
+   ```powershell
+   Restart-Service OktaSCIMConnector
+   ```
 
-```batch
-@echo off
-cd /d C:\okta-scim-sql-connector
-call venv\Scripts\activate.bat
-python inbound_app.py >> logs\scim_server.log 2>&1
-```
+### Service Recovery Options
 
-#### 2. Create Scheduled Task
-
-```powershell
-# Create scheduled task
-$action = New-ScheduledTaskAction -Execute "C:\okta-scim-sql-connector\start_scim_server.bat"
-$trigger = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 3
-
-Register-ScheduledTask -TaskName "OktaSCIMConnector" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description "Okta SCIM SQL Connector"
-```
-
-#### 3. Manage Task
+Configure automatic restart on failure:
 
 ```powershell
-# Start task
-Start-ScheduledTask -TaskName "OktaSCIMConnector"
+sc.exe failure OktaSCIMConnector reset= 86400 actions= restart/60000/restart/60000/restart/60000
 
-# Stop task
-Stop-ScheduledTask -TaskName "OktaSCIMConnector"
+# Explanation:
+# - reset=86400: Reset failure count after 24 hours
+# - restart/60000: Restart after 60 seconds (can specify 3 times)
+```
 
-# Check status
-Get-ScheduledTask -TaskName "OktaSCIMConnector" | Get-ScheduledTaskInfo
+### Scheduled Service Restarts
+
+To restart the service daily at 3 AM:
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-Command Restart-Service OktaSCIMConnector"
+$trigger = New-ScheduledTaskTrigger -Daily -At 3:00AM
+Register-ScheduledTask -TaskName "Restart SCIM Service" -Action $action -Trigger $trigger -RunLevel Highest
 ```
 
 ---
 
-## Production Checklist
+## Best Practices
 
-### Pre-Deployment
+### Production Deployment
 
-- [ ] Python 3.7+ installed
-- [ ] SQL Server connection tested
-- [ ] All dependencies installed (`pip install -r requirements.txt`)
-- [ ] `.env` file configured with production values
-- [ ] Strong SCIM credentials set
-- [ ] SSL certificate obtained (if using HTTPS)
-- [ ] Firewall rules configured
-- [ ] Service account created with minimal permissions
-- [ ] Logs directory created
-- [ ] Health check endpoint tested
+1. ✅ **Use SCIM 1.1** unless you have confirmed SCIM 2.0 feature flag is enabled
+2. ✅ **Configure automatic startup** (`Set-Service -StartupType Automatic`)
+3. ✅ **Enable failure recovery** (restart on failure)
+4. ✅ **Monitor logs regularly** (set up log rotation if needed)
+5. ✅ **Test database connectivity** before starting service
+6. ✅ **Configure firewall rules** for required ports
+7. ✅ **Backup .env file** securely (contains credentials)
+8. ✅ **Document your configuration** (SQL tables, column mappings, etc.)
 
-### Security Hardening
+### Security
 
-- [ ] Use read-only SQL Server account
-- [ ] Enable SQL Server connection encryption
-- [ ] Use HTTPS instead of HTTP
-- [ ] Restrict network access to OPP Agent IP only
-- [ ] Rotate SCIM credentials regularly
-- [ ] Enable Windows Event Log auditing
-- [ ] Set restrictive file permissions on `.env`
-- [ ] Disable debug mode in production
-- [ ] Configure log rotation
+1. 🔒 **Secure .env file** - Restrict permissions to Administrators only
+2. 🔒 **Use strong SCIM credentials** - Generate random passwords for SCIM_USERNAME/PASSWORD
+3. 🔒 **Enable SSL/TLS** if exposing externally (use reverse proxy)
+4. 🔒 **Rotate credentials regularly** - Update SCIM and database passwords periodically
+5. 🔒 **Monitor access logs** - Review `logs/service.log` for unauthorized access attempts
 
 ### Monitoring
 
-- [ ] Service monitoring configured
-- [ ] Health check endpoint monitored
-- [ ] Database connection monitoring
-- [ ] Log file size monitoring
-- [ ] Disk space monitoring
-- [ ] CPU/memory usage monitoring
-- [ ] Network connectivity monitoring
-- [ ] Alert thresholds configured
-
-### Backup
-
-- [ ] Configuration files backed up
-- [ ] SSL certificates backed up
-- [ ] Deployment scripts backed up
-- [ ] Recovery procedure documented
+1. 📊 **Set up alerts** for service failures
+2. 📊 **Monitor resource usage** (CPU, memory, disk)
+3. 📊 **Track import statistics** (users synced, errors)
+4. 📊 **Regular health checks** using `monitor_health.ps1`
 
 ---
 
-## Monitoring and Logging
+## Quick Reference
 
-### Application Logs
-
-```powershell
-# View real-time logs
-Get-Content C:\okta-scim-sql-connector\logs\service-output.log -Wait -Tail 50
-
-# Search for errors
-Select-String -Path "C:\okta-scim-sql-connector\logs\*.log" -Pattern "error|exception" -CaseSensitive:$false
-```
-
-### Windows Event Logs
+### One-Liners
 
 ```powershell
-# View service events
-Get-EventLog -LogName Application -Source "OktaSCIMConnector" -Newest 50
+# Install and start SCIM 1.1
+.\install_service.ps1 -AutoStart
 
-# Filter errors only
-Get-EventLog -LogName Application -Source "OktaSCIMConnector" -EntryType Error -Newest 20
-```
+# Install and start SCIM 2.0
+.\install_service.ps1 -ScimVersion "2.0" -AutoStart
 
-### Health Monitoring Script
+# Check service status
+Get-Service OktaSCIMConnector | Select-Object Name, Status, StartType
 
-Create `monitor_health.ps1`:
-
-```powershell
-$uri = "http://localhost:443/health"
-$creds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("okta_import:YourPassword"))
-$headers = @{ "Authorization" = "Basic $creds" }
-
-try {
-    $response = Invoke-RestMethod -Uri $uri -Headers $headers -TimeoutSec 10
-    if ($response.status -eq "healthy") {
-        Write-Host "✅ SCIM Server is healthy"
-        exit 0
-    } else {
-        Write-Host "⚠️ SCIM Server is unhealthy: $($response.error)"
-        exit 1
-    }
-} catch {
-    Write-Host "❌ SCIM Server is not responding: $_"
-    exit 2
-}
-```
-
-Schedule this script to run every 5 minutes.
-
----
-
-## SSL/TLS Configuration
-
-### Generate Self-Signed Certificate
-
-```powershell
-# Generate certificate
-$cert = New-SelfSignedCertificate -DnsName "scim.yourdomain.com" -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddYears(2)
-
-# Export certificate
-$pwd = ConvertTo-SecureString -String "YourCertPassword" -Force -AsPlainText
-Export-PfxCertificate -Cert $cert -FilePath "C:\okta-scim-sql-connector\cert.pfx" -Password $pwd
-
-# Extract certificate and key
-# Use OpenSSL or certutil to extract .pem files
-```
-
-### Configure Flask with SSL
-
-Update `inbound_app.py`:
-
-```python
-if __name__ == '__main__':
-    # SSL Configuration
-    ssl_cert = os.getenv('SSL_CERT_PATH', 'cert.pem')
-    ssl_key = os.getenv('SSL_KEY_PATH', 'key.pem')
-    
-    if os.path.exists(ssl_cert) and os.path.exists(ssl_key):
-        app.run(
-            host=SERVER_HOST,
-            port=SERVER_PORT,
-            ssl_context=(ssl_cert, ssl_key),
-            debug=False
-        )
-    else:
-        app.run(host=SERVER_HOST, port=SERVER_PORT, debug=False)
-```
-
----
-
-## Performance Tuning
-
-### Optimize Database Queries
-
-```sql
--- Add indexes for better performance
-CREATE INDEX idx_users_id ON users(id);
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_email ON users(email);
-
--- Update statistics
-UPDATE STATISTICS users;
-```
-
-### Configure Connection Pooling
-
-Already configured in pyodbc connection string.
-
-### Adjust Pagination
-
-```python
-# In get_users() function - increase default page size
-count = int(request.args.get('count', 200))  # Default 200 users per page
-```
-
----
-
-## Disaster Recovery
-
-### Backup Configuration
-
-```powershell
-# Backup script
-$backupPath = "C:\Backups\OktaSCIM\$(Get-Date -Format 'yyyy-MM-dd')"
-New-Item -ItemType Directory -Path $backupPath -Force
-
-Copy-Item "C:\okta-scim-sql-connector\.env" -Destination $backupPath
-Copy-Item "C:\okta-scim-sql-connector\inbound_app.py" -Destination $backupPath
-Copy-Item "C:\okta-scim-sql-connector\requirements.txt" -Destination $backupPath
-```
-
-### Recovery Procedure
-
-1. Stop service: `Stop-Service OktaSCIMConnector`
-2. Restore files from backup
-3. Verify configuration: `python test_db_connection.py`
-4. Start service: `Start-Service OktaSCIMConnector`
-5. Test health check: `curl http://localhost:443/health`
-6. Verify OPP Agent connectivity
-
----
-
-## Troubleshooting Service Issues
-
-```powershell
-# Check if service is running
-Get-Service OktaSCIMConnector
-
-# Check service logs (NSSM)
-Get-Content C:\okta-scim-sql-connector\logs\service-output.log -Tail 100
-
-# Check Windows Event Log
-Get-EventLog -LogName Application -Source OktaSCIMConnector -Newest 20
-
-# Test port availability
-Test-NetConnection -ComputerName localhost -Port 443
-
-# Check if port is in use
-netstat -an | findstr :443
+# View recent logs
+Get-Content logs\service.log -Tail 50
 
 # Restart service
 Restart-Service OktaSCIMConnector
 
-# Force kill if not responding
-Get-Process | Where-Object {$_.Path -like "*okta-scim*"} | Stop-Process -Force
+# Uninstall
+.\install_service.ps1 -Uninstall
+
+# Test endpoint
+Invoke-WebRequest -Uri "http://localhost:8080/health"
 ```
+
+---
+
+## Need Help?
+
+- **Logs**: Check `logs\service.log` for detailed error messages
+- **Event Viewer**: Windows Logs → Application → Source: OktaSCIMConnector
+- **Configuration**: Review `.env` file for correct settings
+- **Documentation**: See README.md and docs/ folder
+- **Support**: Contact your Okta Solutions Engineer
+
+---
+
+## Changelog
+
+- **v1.0** - Initial Windows Service support
+- **v1.1** - Added SCIM 2.0 version support
+- **v1.2** - Added automated installation script
