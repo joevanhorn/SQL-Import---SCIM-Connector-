@@ -5,6 +5,76 @@ All notable changes to the Okta SCIM SQL Connector will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-10-08
+✅ Entitlement Support Added to SCIM 2.0
+The SCIM 2.0 connector now includes full entitlement support for Identity Governance!
+
+🎉 What's New
+Enhanced Files (1 file updated)
+
+scim2_app.py - Now includes full entitlement support
+
+Added entitlement endpoints
+Entitlements included in user objects
+Entitlement discovery support
+Identity Governance ready
+
+
+
+New Files Created (3 files)
+
+database/entitlements_schema.sql - Database schema for entitlements
+
+Creates entitlements table
+Creates user_entitlements mapping table
+Includes sample data
+Includes verification queries
+
+
+Updated .env.example - Entitlement configuration
+
+Entitlement table names
+Entitlement column mappings
+Configuration examples
+
+
+docs/ENTITLEMENTS_GUIDE.md - Complete entitlements documentation
+
+Setup instructions
+Configuration guide
+Testing procedures
+Use cases and examples
+Troubleshooting
+Best practices
+
+
+
+
+🚀 New Features
+Entitlement Discovery
+✅ Import roles, groups, and permissions from SQL
+✅ Automatic discovery by Okta
+✅ Support for custom entitlement types
+User-Entitlement Mapping
+✅ Many-to-many relationships
+✅ Flexible assignment
+✅ Multiple entitlement types per user
+Identity Governance Integration
+✅ Access requests
+✅ Access reviews
+✅ Entitlement management
+✅ Compliance reporting
+
+📊 New API Endpoints
+Added to SCIM 2.0 server:
+EndpointMethodDescription/scim/v2/EntitlementsGETList all entitlements with pagination/scim/v2/Entitlements/{id}GETGet specific entitlement by ID
+Updated Endpoints:
+
+/scim/v2/Users - Now includes entitlements in user objects
+/scim/v2/Users/{id} - Now includes entitlements for specific user
+/scim/v2/Schemas - Now includes Entitlement schema
+/scim/v2/ResourceTypes - Now includes Entitlement resource type
+
 ## [1.1.0] - 2025-10-06
 
 ### Added
