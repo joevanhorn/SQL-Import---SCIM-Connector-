@@ -1,5 +1,21 @@
-Flask==3.0.0
-Flask-HTTPAuth==4.8.0
-pyodbc==5.0.1
+# Okta SCIM SQL Connector - Python Dependencies
+
+# Web Framework
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# Database
+pyodbc==4.0.39
+
+# Environment Variables
 python-dotenv==1.0.0
-Werkzeug==3.0.1
+
+# Windows Service Support
+pywin32==306
+
+# Optional: For better logging
+colorama==0.4.6
+
+# Development/Testing (optional)
+# pytest==7.4.2
+# requests==2.31.0
